@@ -3,22 +3,22 @@ import pandas as pd
 import streamlit as st
 import joblib
 
-# ---------------------------------
+# ----------------------------
 # App Config
-# ---------------------------------
+# ----------------------------
 st.set_page_config(page_title="SPR Performance Evaluation (3-layer)", layout="wide")
 st.title("SPR Performance Evaluation (3-layer)")
 st.caption("Select materials, calculate resonance wavelength & performance metrics")
 
-# ---------------------------------
+# ----------------------------
 # Constants
-# ---------------------------------
+# ----------------------------
 FIXED_RI_VALUES = np.array([1.33, 1.35, 1.37, 1.39, 1.40, 1.405, 1.41, 1.415, 1.42])
 MATERIALS = ["Au", "Ag", "Cu", "C"]
 
-# ---------------------------------
+# ----------------------------
 # Load Bundles
-# ---------------------------------
+# ----------------------------
 @st.cache_resource
 def load_bundles():
     rlam_bundle = joblib.load("best_xgb_wl_with_preprocessing.pkl")
@@ -27,9 +27,9 @@ def load_bundles():
 
 rlam_bundle, fwhm_bundle = load_bundles()
 
-# ---------------------------------
+# ----------------------------
 # Helper Functions
-# ---------------------------------
+# ----------------------------
 def thickness_um(material):
     return 0.035 if material in ("Au", "Ag", "Cu") else 0.00034
 
@@ -69,14 +69,18 @@ def preprocess_for_bundle(raw_df, bundle):
 
     for col, le in bundle['label_encoders'].items():
         if col in df.columns:
-            # Clean strings
+            # Validate encoder object
+            if le is None or not hasattr(le, "classes_"):
+                st.error(f"Encoder for '{col}' is missing or invalid.")
+                st.stop()
+
             df[col] = df[col].astype(str).str.strip()
 
-            # Map lowercase to correct casing if possible
-            mapping = {m.lower(): m for m in le.classes_}
-            df[col] = df[col].str.lower().map(mapping).fillna(df[col])
+            # If classes are strings, allow case-insensitive mapping
+            if all(isinstance(m, str) for m in le.classes_):
+                mapping = {m.lower(): m for m in le.classes_}
+                df[col] = df[col].str.lower().map(mapping).fillna(df[col])
 
-            # Validate values
             bad_vals = [v for v in df[col].unique() if v not in le.classes_]
             if bad_vals:
                 st.error(
@@ -85,7 +89,6 @@ def preprocess_for_bundle(raw_df, bundle):
                 )
                 st.stop()
 
-            # Encode
             df[col] = le.transform(df[col])
         else:
             st.error(f"Column '{col}' required for encoding but missing.")
@@ -129,9 +132,9 @@ def evaluate_metrics(ri, lam_um, fwhm_um):
     FOM = S_max / fwhm_nm_left if fwhm_nm_left > 0 else np.nan
     return S, S_max, Q, FOM, ri[idx_left], lam_nm_left, fwhm_nm_left
 
-# ---------------------------------
+# ----------------------------
 # UI Controls
-# ---------------------------------
+# ----------------------------
 m1, m2, m3 = st.columns(3)
 with m1:
     mat1 = st.selectbox("Material of 1st Layer", MATERIALS, index=0)
@@ -151,9 +154,9 @@ if "lam_um" not in st.session_state:
 if "fwhm_um" not in st.session_state:
     st.session_state.fwhm_um = None
 
-# ---------------------------------
+# ----------------------------
 # Actions
-# ---------------------------------
+# ----------------------------
 if calc_btn:
     ri_vals = FIXED_RI_VALUES
     lam_um = predict_rlam_um(ri_vals, mat1, mat2, mat3)
@@ -189,6 +192,7 @@ if eval_btn:
         colC.metric("Q-factor", f"{Q:.3f}")
         colD.metric("FOM", f"{FOM:.6f}")
 
+
         st.caption(
             f"S_max at RI={ri_star:.5f} "
             f"(λ_left={lam_nm_star:.3f} nm, FWHM_left={fwhm_nm_star:.3f} nm)"
@@ -212,3 +216,4 @@ if eval_btn:
             file_name=f"Full_Results_{mat1}-{mat2}-{mat3}.csv",
             mime="text/csv"
         )
+
