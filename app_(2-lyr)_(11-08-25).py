@@ -20,7 +20,7 @@ MATERIALS = ["Au", "Ag", "Cu", "C"]
 @st.cache_resource
 def load_models():
     rlam_model = joblib.load("best_xgboost_model_wl.pkl")
-    fwhm_model = joblib.load("best_xgb_model_fwhm.pkl")
+    fwhm_model = joblib.load("best_xgboost_model_fwhm.pkl")
     return rlam_model, fwhm_model
 
 def label_encode_material(mat: str) -> int:
@@ -180,4 +180,5 @@ if eval_btn:
                 f"(λ_left={metrics['lambda_nm_at_Smax_left']:.3f} nm, "
                 f"FWHM_left={metrics['fwhm_nm_at_Smax_left']:.3f} nm)"
             )
+
 
