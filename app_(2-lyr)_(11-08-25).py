@@ -197,4 +197,18 @@ if eval_btn:
         S_aligned = np.concatenate([[np.nan], S])
         full = pd.DataFrame({
             "Analyte RI": FIXED_RI_VALUES,
-            "Resonance Wavelength (µm)": st
+            "Resonance Wavelength (µm)": st.session_state.lam_um,
+            "FWHM (µm)": st.session_state.fwhm_um,
+            "Sensitivity (nm/RIU)": S_aligned
+        })
+
+        st.subheader("Full Results")
+        st.dataframe(full, use_container_width=True)
+
+        csv_full = full.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            "Download Full Results CSV",
+            data=csv_full,
+            file_name=f"Full_Results_{mat1}-{mat2}-{mat3}.csv",
+            mime="text/csv"
+        )
