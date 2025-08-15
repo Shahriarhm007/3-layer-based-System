@@ -34,7 +34,6 @@ def thickness_um(material):
     return 0.035 if material in ("Au", "Ag", "Cu") else 0.00034
 
 def build_aligned_df(ri_values, mat1, mat2, mat3, bundle):
-    """Constructs a DataFrame exactly matching bundle['feature_names'] order."""
     t1 = thickness_um(mat1)
     t2 = thickness_um(mat2)
     t3 = thickness_um(mat3)
@@ -42,7 +41,6 @@ def build_aligned_df(ri_values, mat1, mat2, mat3, bundle):
     dist_core_to_2nd = 1.05 + t1
     dist_core_to_3rd = dist_core_to_2nd + t2
 
-    # Names must match training exactly
     feature_dict = {
         "Analyte RI": ri_values,
         "Material of 1st layer (RIU)": [mat1] * len(ri_values),
@@ -66,14 +64,32 @@ def build_aligned_df(ri_values, mat1, mat2, mat3, bundle):
     return pd.DataFrame(data)
 
 def preprocess_for_bundle(raw_df, bundle):
-    """Apply encoders, log transform, and enforce column ordering."""
+    """Clean, validate, encode, log-transform, and align columns."""
     df = raw_df.copy()
 
     for col, le in bundle['label_encoders'].items():
         if col in df.columns:
+            # Clean strings
+            df[col] = df[col].astype(str).str.strip()
+
+            # Map lowercase to correct casing if possible
+            mapping = {m.lower(): m for m in le.classes_}
+            df[col] = df[col].str.lower().map(mapping).fillna(df[col])
+
+            # Validate values
+            bad_vals = [v for v in df[col].unique() if v not in le.classes_]
+            if bad_vals:
+                st.error(
+                    f"Unexpected values in '{col}': {bad_vals}. "
+                    f"Expected one of: {list(le.classes_)}"
+                )
+                st.stop()
+
+            # Encode
             df[col] = le.transform(df[col])
         else:
-            st.warning(f"Encoder column '{col}' not found in DataFrame.")
+            st.error(f"Column '{col}' required for encoding but missing.")
+            st.stop()
 
     if bundle.get('log_transform', False):
         df = np.log(df + 1e-9)
@@ -181,9 +197,4 @@ if eval_btn:
         S_aligned = np.concatenate([[np.nan], S])
         full = pd.DataFrame({
             "Analyte RI": FIXED_RI_VALUES,
-            "Resonance Wavelength (µm)": st.session_state.lam_um,
-            "FWHM (µm)": st.session_state.fwhm_um,
-            "Sensitivity (nm/RIU)": S_aligned
-        })
-        st.subheader("Full Results")
-        st.dataframe(full, use_container_width=True)
+            "Resonance Wavelength (µm)": st
