@@ -38,10 +38,11 @@ def build_aligned_df(ri_values, mat1, mat2, mat3, bundle):
     t1 = thickness_um(mat1)
     t2 = thickness_um(mat2)
     t3 = thickness_um(mat3)
-    dist1 = 1.05 + t1
-    dist2 = dist1 + t2
 
-    # Dictionary with possible features
+    dist_core_to_2nd = 1.05 + t1
+    dist_core_to_3rd = dist_core_to_2nd + t2
+
+    # Names must match training exactly
     feature_dict = {
         "Analyte RI": ri_values,
         "Material of 1st layer (RIU)": [mat1] * len(ri_values),
@@ -50,8 +51,8 @@ def build_aligned_df(ri_values, mat1, mat2, mat3, bundle):
         "thickness of 1st layer (µm)": t1,
         "thickness of 2nd layer (µm)": t2,
         "thickness of 3rd layer (µm)": t3,
-        "Distance1 (µm)": dist1,
-        "Distance2 (µm)": dist2
+        "Distance bwtn core surface and 2nd layer (µm)": dist_core_to_2nd,
+        "Distance bwtn core surface and 3rd layer (µm)": dist_core_to_3rd
     }
 
     data = {}
