@@ -177,4 +177,10 @@ if eval_btn:
         # Optional full table
         S_aligned = np.concatenate([[np.nan], S])
         full = pd.DataFrame({
-            "Analyte RI": FIXED_R
+            "Analyte RI": FIXED_RI_VALUES,
+            "Resonance Wavelength (µm)": st.session_state.lam_um,
+            "FWHM (µm)": st.session_state.fwhm_um,
+            "Sensitivity (nm/RIU)": S_aligned
+        })
+        st.subheader("Full Results")
+        st.dataframe(full, use_container_width=True)
