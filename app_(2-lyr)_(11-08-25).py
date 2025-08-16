@@ -6,7 +6,7 @@ import os
 
 # ===== File paths =====
 FWHM_MODEL_FILE = 'best_xgb_fwhm_with_preprocessing.pkl'
-RLAM_MODEL_FILE = 'best_xgb_rlam_with_preprocessing.pkl'
+RLAM_MODEL_FILE = 'best_xgb_wl_with_preprocessing.pkl'
 
 # ===== Safety check for missing files =====
 for file_path in [FWHM_MODEL_FILE, RLAM_MODEL_FILE]:
@@ -82,3 +82,4 @@ if st.button("Predict"):
     # --- Show results ---
     st.success(f"Predicted FWHM: {fwhm_pred:.4f}")
     st.success(f"Predicted Resonance Wavelength (Rλ): {rlam_pred:.4f} nm")
+
