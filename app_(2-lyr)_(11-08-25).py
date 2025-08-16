@@ -23,6 +23,16 @@ wl_model, fwhm_model, le = load_models_and_encoder()
 FIXED_RI_VALUES = np.array([1.33, 1.35, 1.37, 1.39, 1.40, 1.405, 1.41, 1.415, 1.42])
 
 # -------------------------
+# Thickness mapping (µm)
+# -------------------------
+THICKNESS_MAP = {
+    "Au": 0.035,
+    "Ag": 0.035,
+    "Cu": 0.035,
+    "C": 0.00034
+}
+
+# -------------------------
 # Streamlit UI
 # -------------------------
 st.title("📡 Optical Performance Prediction")
@@ -31,7 +41,7 @@ st.markdown("Predict **Resonance Wavelength** and **FWHM** using trained XGBoost
 # Material options from encoder
 materials = le.classes_
 
-# User input for 3 layers
+# User selects 3 layers (thickness auto-assigned)
 col1, col2, col3 = st.columns(3)
 with col1:
     mat1 = st.selectbox("Material of 1st Layer", materials)
@@ -40,14 +50,12 @@ with col2:
 with col3:
     mat3 = st.selectbox("Material of 3rd Layer", materials)
 
-# Thickness inputs
-col4, col5, col6 = st.columns(3)
-with col4:
-    t1 = st.number_input("Thickness of 1st Layer (nm)", min_value=1.0, value=50.0, step=1.0)
-with col5:
-    t2 = st.number_input("Thickness of 2nd Layer (nm)", min_value=1.0, value=50.0, step=1.0)
-with col6:
-    t3 = st.number_input("Thickness of 3rd Layer (nm)", min_value=1.0, value=50.0, step=1.0)
+# Auto thickness lookup
+t1 = THICKNESS_MAP.get(mat1, 0.0)
+t2 = THICKNESS_MAP.get(mat2, 0.0)
+t3 = THICKNESS_MAP.get(mat3, 0.0)
+
+st.info(f"Auto Thickness (µm): {mat1}={t1}, {mat2}={t2}, {mat3}={t3}")
 
 # -------------------------
 # Prediction
@@ -62,7 +70,7 @@ if st.button("🔮 Predict Optical Properties"):
     predictions_fwhm = []
 
     for ri in FIXED_RI_VALUES:
-        # Feature vector (must match training order)
+        # Feature vector (must match training order!)
         features = np.array([
             ri,
             mat1_enc, t1,
@@ -70,9 +78,9 @@ if st.button("🔮 Predict Optical Properties"):
             mat3_enc, t3
         ]).reshape(1, -1)
 
-        # Predict (both models were trained with log-transform, so exp back-transform)
-        wl_pred = np.exp(wl_model.predict(features))[0]
-        fwhm_pred = np.exp(fwhm_model.predict(features))[0]
+        # FIX: convert safely to scalar
+        wl_pred = float(np.exp(wl_model.predict(features)))
+        fwhm_pred = float(np.exp(fwhm_model.predict(features)))
 
         predictions_wl.append(wl_pred)
         predictions_fwhm.append(fwhm_pred)
