@@ -31,6 +31,7 @@ FEATURE_COLUMNS = [
     "thickness of 1st layer (µm)",
     "thickness of 2nd layer (µm)",
     "thickness of 3rd layer (µm)",
+    "Distance bwtn core surface and 2nd layer (µm)",
     "Distance bwtn core surface and 3rd layer (µm)"
 ]
 
@@ -46,7 +47,8 @@ def get_fixed_ri_values():
 
 def build_features(ri_values, mat1, mat2, mat3):
     t1, t2, t3 = thickness_um(mat1), thickness_um(mat2), thickness_um(mat3)
-    dist = 1.05 + t1 + t2
+    dist2 = 1.05 + t1        # Distance from core surface to 2nd layer
+    dist3 = dist2 + t2       # Distance from core surface to 3rd layer
     df = pd.DataFrame({
         "Analyte RI": ri_values,
         "Material of 1st layer (RIU)": ENCODE_MAP[mat1],
@@ -55,7 +57,8 @@ def build_features(ri_values, mat1, mat2, mat3):
         "thickness of 1st layer (µm)": t1,
         "thickness of 2nd layer (µm)": t2,
         "thickness of 3rd layer (µm)": t3,
-        "Distance bwtn core surface and 3rd layer (µm)": dist
+        "Distance bwtn core surface and 2nd layer (µm)": dist2,
+        "Distance bwtn core surface and 3rd layer (µm)": dist3
     })
     return df[FEATURE_COLUMNS]
 
@@ -155,3 +158,4 @@ if eval_btn:
             st.caption(f"S_max at RI={metrics['ri_at_Smax']:.5f} "
                        f"(λ={metrics['lambda_nm_at_Smax']:.3f} nm, "
                        f"FWHM={metrics['fwhm_nm_at_Smax']:.3f} nm)")
+
