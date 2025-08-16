@@ -1,17 +1,15 @@
 import streamlit as st
 import numpy as np
-import joblib
 import pandas as pd
+import joblib
 
 # -------------------------
 # Load Models + Encoder
 # -------------------------
 @st.cache_resource
 def load_models_and_encoder():
-    # Load trained models
     wl_model = joblib.load("best_xgb_wl_with_preprocessing.pkl")
     fwhm_model = joblib.load("best_xgb_fwhm_with_preprocessing.pkl")
-    # Load shared LabelEncoder
     le = joblib.load("label_encoder_materials.pkl")
     return wl_model, fwhm_model, le
 
@@ -35,13 +33,12 @@ THICKNESS_MAP = {
 # -------------------------
 # Streamlit UI
 # -------------------------
-st.title("📡 Optical Performance Prediction")
+st.title("📡 Optical Performance Prediction (3-Layer System)")
 st.markdown("Predict **Resonance Wavelength** and **FWHM** using trained XGBoost models.")
 
-# Material options from encoder
 materials = le.classes_
 
-# User selects 3 layers (thickness auto-assigned)
+# Layer selection (auto thickness applied)
 col1, col2, col3 = st.columns(3)
 with col1:
     mat1 = st.selectbox("Material of 1st Layer", materials)
@@ -50,7 +47,7 @@ with col2:
 with col3:
     mat3 = st.selectbox("Material of 3rd Layer", materials)
 
-# Auto thickness lookup
+# Auto thickness
 t1 = THICKNESS_MAP.get(mat1, 0.0)
 t2 = THICKNESS_MAP.get(mat2, 0.0)
 t3 = THICKNESS_MAP.get(mat3, 0.0)
@@ -61,7 +58,6 @@ st.info(f"Auto Thickness (µm): {mat1}={t1}, {mat2}={t2}, {mat3}={t3}")
 # Prediction
 # -------------------------
 if st.button("🔮 Predict Optical Properties"):
-    # Encode materials
     mat1_enc = le.transform([mat1])[0]
     mat2_enc = le.transform([mat2])[0]
     mat3_enc = le.transform([mat3])[0]
@@ -70,17 +66,20 @@ if st.button("🔮 Predict Optical Properties"):
     predictions_fwhm = []
 
     for ri in FIXED_RI_VALUES:
-        # Feature vector (must match training order!)
-        features = np.array([
-            ri,
-            mat1_enc, t1,
-            mat2_enc, t2,
-            mat3_enc, t3
-        ]).reshape(1, -1)
+        # ✅ Build DataFrame with correct column names
+        features = pd.DataFrame([{
+            "RI": ri,
+            "Material1": mat1_enc,
+            "Thickness1": t1,
+            "Material2": mat2_enc,
+            "Thickness2": t2,
+            "Material3": mat3_enc,
+            "Thickness3": t3
+        }])
 
-        # FIX: convert safely to scalar
-        wl_pred = float(np.exp(wl_model.predict(features)))
-        fwhm_pred = float(np.exp(fwhm_model.predict(features)))
+        # ✅ Safe conversion to scalar
+        wl_pred = float(np.exp(wl_model.predict(features))[0])
+        fwhm_pred = float(np.exp(fwhm_model.predict(features))[0])
 
         predictions_wl.append(wl_pred)
         predictions_fwhm.append(fwhm_pred)
