@@ -1,111 +1,187 @@
-import streamlit as st
 import numpy as np
 import pandas as pd
+import streamlit as st
 import joblib
 
-# -------------------------
-# Load Models + Encoder
-# -------------------------
+# -----------------------------
+# Streamlit Setup
+# -----------------------------
+st.set_page_config(page_title="SPR Performance Evaluation (2-layer)", layout="wide")
+st.title("SPR Performance Evaluation (2-layer)")
+st.caption("Select materials → Calculate (R-lam) → Evaluate Performance")
+
+# -----------------------------
+# Constants and helpers
+# -----------------------------
+EPS = 1e-9
+MATERIAL_CODE = {"Au": 1, "Ag": 2, "Cu": 3, "C": 4}
+
+def thickness_um(material: str) -> float:
+    """Return thickness of plasmonic material (µm)."""
+    return 0.035 if material in ("Au", "Ag", "Cu") else 0.00034
+
+FEATURE_COLUMNS = [
+    "Analyte RI",
+    "Material of 1st layer (RIU)",
+    "Material of 2nd layer (RIU)",
+    "thickness of 1st layer (µm)",
+    "thickness of 2nd layer (µm)",
+    "Distance bwtn core surface and 2nd layer (µm)",
+]
+
 @st.cache_resource
-def load_models_and_encoder():
-    wl_model = joblib.load("best_xgb_wl_with_preprocessing.pkl")
-    fwhm_model = joblib.load("best_xgb_fwhm_with_preprocessing.pkl")
-    le = joblib.load("label_encoder_materials.pkl")
-    return wl_model, fwhm_model, le
+def load_models():
+    """Load trained XGBoost models."""
+    rlam_model = joblib.load("best_xgboost_model_wl.pkl")
+    fwhm_model = joblib.load("best_xgb_model_fwhm.pkl")
+    return rlam_model, fwhm_model
 
-wl_model, fwhm_model, le = load_models_and_encoder()
+def get_fixed_ri_values(mat1: str, mat2: str) -> np.ndarray:
+    """Return analyte RI grid depending on material combination."""
+    mset = {mat1.lower(), mat2.lower()}
+    if "c" in mset and ("au" in mset or "ag" in mset):
+        return np.array([1.33, 1.35, 1.36, 1.37, 1.375, 1.38])
+    elif "c" in mset and "cu" in mset:
+        return np.array([1.33, 1.35, 1.36, 1.37, 1.38, 1.385, 1.39])
+    elif ("au" in mset and "ag" in mset) or (mat1 == "Au" and mat2 == "Au") or (mat1 == "Ag" and mat2 == "Ag"):
+        return np.array([1.33, 1.35, 1.37, 1.39, 1.40, 1.405, 1.41])
+    elif ("cu" in mset and ("au" in mset or "ag" in mset)) or (mat1 == "Cu" and mat2 == "Cu"):
+        return np.array([1.33, 1.35, 1.37, 1.39, 1.40, 1.405, 1.41, 1.415, 1.42])
+    else:
+        return np.array([1.33, 1.35, 1.37])  # fallback
 
-# -------------------------
-# Fixed RI values
-# -------------------------
-FIXED_RI_VALUES = np.array([1.33, 1.35, 1.37, 1.39, 1.40, 1.405, 1.41, 1.415, 1.42])
-
-# -------------------------
-# Thickness mapping (µm)
-# -------------------------
-THICKNESS_MAP = {
-    "Au": 0.035,
-    "Ag": 0.035,
-    "Cu": 0.035,
-    "C": 0.00034
-}
-
-# -------------------------
-# Streamlit UI
-# -------------------------
-st.title("📡 Optical Performance Prediction (3-Layer System)")
-st.markdown("Predict **Resonance Wavelength** and **FWHM** using trained XGBoost models.")
-
-materials = le.classes_
-
-# Layer selection (auto thickness applied)
-col1, col2, col3 = st.columns(3)
-with col1:
-    mat1 = st.selectbox("Material of 1st Layer", materials)
-with col2:
-    mat2 = st.selectbox("Material of 2nd Layer", materials)
-with col3:
-    mat3 = st.selectbox("Material of 3rd Layer", materials)
-
-# Auto thickness
-t1 = THICKNESS_MAP.get(mat1, 0.0)
-t2 = THICKNESS_MAP.get(mat2, 0.0)
-t3 = THICKNESS_MAP.get(mat3, 0.0)
-
-st.info(f"Auto Thickness (µm): {mat1}={t1}, {mat2}={t2}, {mat3}={t3}")
-
-# -------------------------
-# Prediction
-# -------------------------
-if st.button("🔮 Predict Optical Properties"):
-    mat1_enc = le.transform([mat1])[0]
-    mat2_enc = le.transform([mat2])[0]
-    mat3_enc = le.transform([mat3])[0]
-
-    predictions_wl = []
-    predictions_fwhm = []
-
-    for ri in FIXED_RI_VALUES:
-        # ✅ Build DataFrame with correct column names
-        features = pd.DataFrame([{
-            "RI": ri,
-            "Material1": mat1_enc,
-            "Thickness1": t1,
-            "Material2": mat2_enc,
-            "Thickness2": t2,
-            "Material3": mat3_enc,
-            "Thickness3": t3
-        }])
-
-        # ✅ Safe conversion to scalar
-        wl_pred = float(np.exp(wl_model.predict(features))[0])
-        fwhm_pred = float(np.exp(fwhm_model.predict(features))[0])
-
-        predictions_wl.append(wl_pred)
-        predictions_fwhm.append(fwhm_pred)
-
-    # -------------------------
-    # Results Table
-    # -------------------------
-    results_df = pd.DataFrame({
-        "Refractive Index (RIU)": FIXED_RI_VALUES,
-        "Predicted Resonance Wavelength (µm)": predictions_wl,
-        "Predicted FWHM": predictions_fwhm
+def build_features(ri_values, mat1, mat2) -> pd.DataFrame:
+    """Construct feature DataFrame for predictions."""
+    t1 = thickness_um(mat1)
+    t2 = thickness_um(mat2)
+    dist = 1.05 + t1
+    df = pd.DataFrame({
+        "Analyte RI": ri_values,
+        "Material of 1st layer (RIU)": MATERIAL_CODE[mat1],
+        "Material of 2nd layer (RIU)": MATERIAL_CODE[mat2],
+        "thickness of 1st layer (µm)": t1,
+        "thickness of 2nd layer (µm)": t2,
+        "Distance bwtn core surface and 2nd layer (µm)": dist,
     })
+    return df[FEATURE_COLUMNS]
 
-    st.subheader("📊 Prediction Results")
-    st.dataframe(results_df.style.format({
-        "Predicted Resonance Wavelength (µm)": "{:.4f}",
-        "Predicted FWHM": "{:.4f}"
-    }))
+def predict_rlam_um(rlam_model, X_raw: pd.DataFrame) -> np.ndarray:
+    """Predict resonance wavelength (µm) using log-transformed model."""
+    X_log = np.log(X_raw + EPS)
+    y_log = rlam_model.predict(X_log)
+    return np.exp(y_log)
 
-    # -------------------------
-    # Download Option
-    # -------------------------
-    csv = results_df.to_csv(index=False).encode("utf-8")
-    st.download_button(
-        "⬇️ Download Predictions as CSV",
-        data=csv,
-        file_name="predictions.csv",
-        mime="text/csv"
-    )
+def predict_fwhm_um(fwhm_model, X_raw: pd.DataFrame) -> np.ndarray:
+    """Predict FWHM (µm) using raw inputs."""
+    return fwhm_model.predict(X_raw)
+
+def sensitivity_nm_per_RIU(ri: np.ndarray, lam_um: np.ndarray) -> np.ndarray:
+    """Compute wavelength sensitivity (nm/RIU)."""
+    lam_nm = lam_um * 1000.0
+    dlam = lam_nm[1:] - lam_nm[:-1]
+    dn = ri[1:] - ri[:-1]
+    S = np.divide(dlam, dn, out=np.full_like(dlam, np.nan), where=dn!=0)
+    return S
+
+def evaluate_metrics(ri: np.ndarray, lam_um: np.ndarray, fwhm_um: np.ndarray):
+    """Compute S_max, Q-factor, FoM."""
+    S = sensitivity_nm_per_RIU(ri, lam_um)
+    if len(S) == 0 or np.all(~np.isfinite(S)):
+        return None
+    idx_left = int(np.nanargmax(S))
+    S_max = float(S[idx_left])
+    ri_star = float(ri[idx_left])
+    lam_nm_left = float(lam_um[idx_left] * 1000.0)
+    fwhm_nm_left = float(fwhm_um[idx_left] * 1000.0)
+    Q = lam_nm_left / fwhm_nm_left if fwhm_nm_left > 0 else np.nan
+    FOM = S_max / fwhm_nm_left if fwhm_nm_left > 0 else np.nan
+    return {
+        "S_all": S,
+        "S_max": S_max,
+        "ri_at_Smax": ri_star,
+        "lambda_nm_at_Smax_left": lam_nm_left,
+        "fwhm_nm_at_Smax_left": fwhm_nm_left,
+        "Q": Q,
+        "FOM": FOM,
+        "idx_left": idx_left
+    }
+
+# -----------------------------
+# UI: Material selection
+# -----------------------------
+m1, m2 = st.columns(2)
+with m1:
+    mat1 = st.selectbox("Plasmonic Metal 1st Layer", ["Au", "Ag", "Cu", "C"], index=1)
+with m2:
+    mat2 = st.selectbox("Plasmonic Metal 2nd Layer", ["Au", "Ag", "Cu", "C"], index=0)
+
+btn1, btn2 = st.columns(2)
+calc_btn = btn1.button("Calculate (R-lam)", type="primary")
+eval_btn = btn2.button("Evaluate Performance")
+
+# Session state
+if "table" not in st.session_state:
+    st.session_state.table = None
+if "ri_values" not in st.session_state:
+    st.session_state.ri_values = None
+if "lam_um" not in st.session_state:
+    st.session_state.lam_um = None
+if "fwhm_um" not in st.session_state:
+    st.session_state.fwhm_um = None
+
+# -----------------------------
+# Actions
+# -----------------------------
+if calc_btn:
+    try:
+        rlam_model, fwhm_model = load_models()
+    except Exception as e:
+        st.error(f"Failed to load models: {e}")
+        st.stop()
+
+    ri_values = get_fixed_ri_values(mat1, mat2)
+    X = build_features(ri_values, mat1, mat2)
+
+    lam_um = predict_rlam_um(rlam_model, X)
+    fwhm_um = predict_fwhm_um(fwhm_model, X)
+
+    st.session_state.ri_values = ri_values
+    st.session_state.lam_um = lam_um
+    st.session_state.fwhm_um = fwhm_um
+
+    table = pd.DataFrame({
+        "Analyte RI": ri_values,
+        "Resonance Wavelength (µm)": lam_um,
+        "FWHM (µm)": fwhm_um
+    })
+    st.session_state.table = table
+
+    st.subheader("Predicted R-lam & FWHM")
+    st.dataframe(table, use_container_width=True)
+
+    csv = table.to_csv(index=False).encode("utf-8")
+    st.download_button("Download CSV (RI vs R-lam & FWHM)", data=csv, file_name=f"SPR_{mat1}-{mat2}.csv", mime="text/csv")
+
+if eval_btn:
+    if st.session_state.table is None:
+        st.warning("Please click 'Calculate (R-lam)' first.")
+    else:
+        ri_values = st.session_state.ri_values
+        lam_um = st.session_state.lam_um
+        fwhm_um = st.session_state.fwhm_um
+
+        metrics = evaluate_metrics(ri_values, lam_um, fwhm_um)
+        if metrics is None:
+            st.error("Unable to compute sensitivity. Check RI step and predictions.")
+        else:
+            colA, colB, colC, colD = st.columns(4)
+            colA.metric("Model", f"{mat1}-{mat2}")
+            colB.metric("Max Sensitivity", f"{metrics['S_max']:.3f} nm/RIU")
+            colC.metric("Q-factor", f"{metrics['Q']:.3f}")
+            colD.metric("FoM", f"{metrics['FOM']:.6f}")
+
+            st.caption(
+                f"S_max at RI={metrics['ri_at_Smax']:.5f} "
+                f"(λ={metrics['lambda_nm_at_Smax_left']:.3f} nm, "
+                f"FWHM={metrics['fwhm_nm_at_Smax_left']:.3f} nm)"
+            )
